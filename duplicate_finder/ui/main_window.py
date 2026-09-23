@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QSize, Qt, QThread, Signal
+from PySide6.QtCore import QObject, QSize, Qt, QThread, QStandardPaths, Signal
 from PySide6.QtGui import QIcon, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
@@ -238,10 +238,15 @@ class MainWindow(QMainWindow):
             self.setStyleSheet(stylesheet.read_text(encoding="utf-8"))
 
     def choose_folder(self) -> None:
+        pictures_folder = QStandardPaths.writableLocation(
+            QStandardPaths.StandardLocation.PicturesLocation
+        )
+        start_folder = str(self.folder) if self.folder else pictures_folder
+
         selected = QFileDialog.getExistingDirectory(
             self,
             "Choose image folder",
-            str(self.folder) if self.folder else "",
+            start_folder,
         )
         if not selected:
             return
