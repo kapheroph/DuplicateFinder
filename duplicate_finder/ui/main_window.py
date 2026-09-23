@@ -35,6 +35,7 @@ from duplicate_finder.actions import (
 )
 from duplicate_finder.duplicates import AnalysisResult, analyze_folder
 from duplicate_finder.models import DuplicateGroup, ImageRecord
+from duplicate_finder.quality import advise_group
 from duplicate_finder.resources import resource_path
 
 
@@ -243,6 +244,8 @@ class ImageCard(QFrame):
         self,
         record: ImageRecord,
         decision: str = "keep",
+        notes: tuple[str, ...] = (),
+        suggested: bool = False,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -272,6 +275,11 @@ class ImageCard(QFrame):
         else:
             preview.setText("Preview unavailable")
 
+        if suggested:
+            badge = QLabel("Suggested keep")
+            badge.setObjectName("suggestedBadge")
+            layout.addWidget(badge)
+
         name = QLabel(record.path.name)
         name.setObjectName("imageName")
         name.setWordWrap(True)
@@ -284,6 +292,11 @@ class ImageCard(QFrame):
         path = QLabel(str(record.path.parent))
         path.setObjectName("imagePath")
         path.setWordWrap(True)
+
+        comparison = QLabel("\n".join(f"• {note}" for note in notes))
+        comparison.setObjectName("comparisonNotes")
+        comparison.setWordWrap(True)
+        comparison.setVisible(bool(notes))
 
         actions = QHBoxLayout()
         self.keep_button = QPushButton("Keep")
@@ -305,6 +318,7 @@ class ImageCard(QFrame):
         layout.addWidget(name)
         layout.addWidget(details)
         layout.addWidget(path)
+        layout.addWidget(comparison)
         layout.addLayout(actions)
 
         self.set_decision(decision, emit=False)
@@ -343,6 +357,29 @@ class GroupPanel(QWidget):
         title.setObjectName("groupTitle")
         layout.addWidget(title)
 
+        advice = advise_group(group)
+
+        advice_box = QFrame()
+        advice_box.setObjectName("adviceBox")
+        advice_layout = QVBoxLayout(advice_box)
+        advice_layout.setContentsMargins(14, 12, 14, 12)
+        advice_layout.setSpacing(5)
+
+        explanation = QLabel(advice.summary)
+        explanation.setObjectName("adviceText")
+        explanation.setWordWrap(True)
+        advice_layout.addWidget(explanation)
+
+        if advice.suggestion is not None and advice.suggestion_reason:
+            suggestion = QLabel(
+                f"Suggested keep: {advice.suggestion.name}\n{advice.suggestion_reason}."
+            )
+            suggestion.setObjectName("adviceSuggestion")
+            suggestion.setWordWrap(True)
+            advice_layout.addWidget(suggestion)
+
+        layout.addWidget(advice_box)
+
         hint = QLabel("Click an image to preview it larger.")
         hint.setObjectName("imageDetails")
         layout.addWidget(hint)
@@ -353,7 +390,12 @@ class GroupPanel(QWidget):
         cards_layout.setSpacing(12)
 
         for record in group.files:
-            card = ImageCard(record, decisions.get(record.path, "keep"))
+            card = ImageCard(
+                record,
+                decisions.get(record.path, "keep"),
+                notes=advice.notes.get(record.path, ()),
+                suggested=advice.suggestion == record.path,
+            )
             card.decision_changed.connect(self.decision_changed.emit)
             card.preview_requested.connect(self.preview_requested.emit)
             cards_layout.addWidget(card)
