@@ -129,7 +129,7 @@ class GroupPanel(QWidget):
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle("DuplicateFinder")
+        self.setWindowTitle("Bill's DupelicateFinder")
         self.resize(1280, 800)
 
         self.folder: Path | None = None
@@ -149,7 +149,7 @@ class MainWindow(QMainWindow):
 
         header = QHBoxLayout()
         title_block = QVBoxLayout()
-        app_title = QLabel("DuplicateFinder")
+        app_title = QLabel("Bill's DupelicateFinder")
         app_title.setObjectName("appTitle")
         subtitle = QLabel("Find exact and visually similar images without changing anything.")
         subtitle.setObjectName("subtitle")
@@ -375,7 +375,7 @@ class MainWindow(QMainWindow):
 
 def run_gui() -> int:
     app = QApplication.instance() or QApplication([])
-    app.setApplicationName("DuplicateFinder")
+    app.setApplicationName("Bill's DupelicateFinder")
     window = MainWindow()
     window.show()
     return app.exec()
