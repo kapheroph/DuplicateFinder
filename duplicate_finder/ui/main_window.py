@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QSize, Qt, QThread, QStandardPaths, Signal
-from PySide6.QtGui import QPixmap
+from PySide6.QtCore import QObject, QSize, Qt, QThread, QStandardPaths, QUrl, Signal
+from PySide6.QtGui import QDesktopServices, QIcon, QPixmap
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QApplication,
     QCheckBox,
     QDialog,
@@ -26,7 +27,12 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from duplicate_finder.actions import move_to_quarantine, quarantine_directory
+from duplicate_finder.actions import (
+    list_quarantined_images,
+    move_to_quarantine,
+    quarantine_directory,
+    restore_from_quarantine,
+)
 from duplicate_finder.duplicates import AnalysisResult, analyze_folder
 from duplicate_finder.models import DuplicateGroup, ImageRecord
 
@@ -81,6 +87,151 @@ class PreviewDialog(QDialog):
 
         layout.addWidget(preview, 1)
         layout.addWidget(details)
+
+
+class QuarantineDialog(QDialog):
+    def __init__(self, scan_root: Path, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.scan_root = scan_root
+        self.changed = False
+
+        self.setWindowTitle("Quarantine Manager")
+        self.resize(760, 560)
+
+        layout = QVBoxLayout(self)
+        title = QLabel("Quarantine Manager")
+        title.setObjectName("groupTitle")
+        description = QLabel(
+            "Files here are safe from normal scans. Restore anything you want back."
+        )
+        description.setObjectName("subtitle")
+
+        self.list_widget = QListWidget()
+        self.list_widget.setSelectionMode(
+            QAbstractItemView.SelectionMode.ExtendedSelection
+        )
+        self.list_widget.setIconSize(QSize(120, 90))
+
+        buttons = QHBoxLayout()
+        self.open_button = QPushButton("Open Quarantine Folder")
+        self.restore_selected_button = QPushButton("Restore Selected")
+        self.restore_all_button = QPushButton("Restore All")
+
+        self.open_button.clicked.connect(self.open_folder)
+        self.restore_selected_button.clicked.connect(self.restore_selected)
+        self.restore_all_button.clicked.connect(self.restore_all)
+
+        buttons.addWidget(self.open_button)
+        buttons.addStretch(1)
+        buttons.addWidget(self.restore_selected_button)
+        buttons.addWidget(self.restore_all_button)
+
+        layout.addWidget(title)
+        layout.addWidget(description)
+        layout.addWidget(self.list_widget, 1)
+        layout.addLayout(buttons)
+
+        self.refresh()
+
+    def refresh(self) -> None:
+        self.list_widget.clear()
+        files = list_quarantined_images(self.scan_root)
+
+        for path in files:
+            item = QListWidgetItem(path.name)
+            item.setData(Qt.ItemDataRole.UserRole, str(path))
+
+            pixmap = QPixmap(str(path))
+            if not pixmap.isNull():
+                item.setIcon(
+                    QIcon(
+                        pixmap.scaled(
+                            QSize(120, 90),
+                            Qt.AspectRatioMode.KeepAspectRatio,
+                            Qt.TransformationMode.SmoothTransformation,
+                        )
+                    )
+                )
+
+            item.setToolTip(str(path))
+            self.list_widget.addItem(item)
+
+        has_files = bool(files)
+        self.restore_selected_button.setEnabled(has_files)
+        self.restore_all_button.setEnabled(has_files)
+
+        if not has_files:
+            empty = QListWidgetItem("Quarantine is empty.")
+            empty.setFlags(Qt.ItemFlag.NoItemFlags)
+            self.list_widget.addItem(empty)
+
+    def selected_paths(self) -> list[Path]:
+        paths: list[Path] = []
+        for item in self.list_widget.selectedItems():
+            raw = item.data(Qt.ItemDataRole.UserRole)
+            if raw:
+                paths.append(Path(raw))
+        return paths
+
+    def open_folder(self) -> None:
+        folder = quarantine_directory(self.scan_root)
+        folder.mkdir(parents=True, exist_ok=True)
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
+
+    def restore_selected(self) -> None:
+        paths = self.selected_paths()
+        if not paths:
+            QMessageBox.information(
+                self,
+                "Nothing selected",
+                "Select one or more quarantined images to restore.",
+            )
+            return
+        self._restore(paths)
+
+    def restore_all(self) -> None:
+        paths = list_quarantined_images(self.scan_root)
+        if not paths:
+            return
+
+        answer = QMessageBox.question(
+            self,
+            "Restore all quarantined images?",
+            f"Restore all {len(paths)} quarantined image(s) to the scanned folder?",
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+
+        self._restore(paths, confirm=False)
+
+    def _restore(self, paths: list[Path], *, confirm: bool = True) -> None:
+        if confirm:
+            answer = QMessageBox.question(
+                self,
+                "Restore selected images?",
+                f"Restore {len(paths)} selected image(s) to the scanned folder?",
+            )
+            if answer != QMessageBox.StandardButton.Yes:
+                return
+
+        try:
+            moves = restore_from_quarantine(paths, self.scan_root)
+        except Exception as exc:
+            QMessageBox.critical(
+                self,
+                "Restore failed",
+                f"{type(exc).__name__}: {exc}",
+            )
+            return
+
+        self.changed = self.changed or bool(moves)
+        self.refresh()
+
+        QMessageBox.information(
+            self,
+            "Images restored",
+            f"Restored {len(moves)} image(s).",
+        )
 
 
 class ImageCard(QFrame):
@@ -340,7 +491,12 @@ class MainWindow(QMainWindow):
         self.quarantine_button.setEnabled(False)
         self.quarantine_button.clicked.connect(self.apply_quarantine)
 
+        self.manage_quarantine_button = QPushButton("Quarantine Manager")
+        self.manage_quarantine_button.setEnabled(False)
+        self.manage_quarantine_button.clicked.connect(self.open_quarantine_manager)
+
         action_layout.addWidget(self.selection_summary, 1)
+        action_layout.addWidget(self.manage_quarantine_button)
         action_layout.addWidget(self.quarantine_button)
         outer.addWidget(action_bar)
 
@@ -373,6 +529,7 @@ class MainWindow(QMainWindow):
         self.folder_label.setText(str(self.folder))
         self.folder_label.setToolTip(str(self.folder))
         self.scan_button.setEnabled(True)
+        self.manage_quarantine_button.setEnabled(True)
         self.statusBar().showMessage("Folder selected")
 
     def start_scan(self) -> None:
@@ -532,6 +689,16 @@ class MainWindow(QMainWindow):
                 return f"{value:.1f} {unit}"
             value /= 1024
         return f"{value:.1f} GiB"
+
+    def open_quarantine_manager(self) -> None:
+        if self.folder is None:
+            return
+
+        dialog = QuarantineDialog(self.folder, self)
+        dialog.exec()
+
+        if dialog.changed:
+            self.start_scan()
 
     def apply_quarantine(self) -> None:
         if self.folder is None:
