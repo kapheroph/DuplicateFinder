@@ -4,7 +4,7 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
-from .scanner import IMAGE_EXTENSIONS
+QUARANTINE_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif", ".tif", ".tiff"}
 
 
 QUARANTINE_DIR_NAME = "DuplicateFinder_Quarantine"
@@ -75,7 +75,7 @@ def list_quarantined_images(scan_root: Path) -> list[Path]:
         (
             path
             for path in quarantine.iterdir()
-            if path.is_file() and path.suffix.lower() in IMAGE_EXTENSIONS
+            if path.is_file() and path.suffix.lower() in QUARANTINE_IMAGE_EXTENSIONS
         ),
         key=lambda path: path.name.casefold(),
     )
