@@ -1,6 +1,7 @@
 $ErrorActionPreference = "Stop"
+Set-Location $PSScriptRoot
 
-$IconPath = Join-Path $PSScriptRoot "assets\\bills_duplicate_finder.ico"
+$IconPath = Join-Path $PSScriptRoot "assets\bills_duplicate_finder.ico"
 $DistPath = Join-Path $PSScriptRoot "dist"
 $BuildPath = Join-Path $PSScriptRoot "build"
 
@@ -19,8 +20,8 @@ if (Test-Path $BuildPath) {
     Remove-Item $BuildPath -Recurse -Force
 }
 
-python -m PyInstaller --noconfirm --clean --onefile --windowed --name "Bill's Duplicate Finder" --icon $IconPath --add-data "$IconPath;assets" --add-data "duplicate_finder\\ui\\styles.qss;duplicate_finder\\ui" gui.py
+python -m PyInstaller --noconfirm --clean --onefile --windowed --name "Bill's Duplicate Finder" --icon $IconPath --add-data "$IconPath;assets" --add-data "duplicate_finder\ui\styles.qss;duplicate_finder\ui" gui.py
 
 Write-Host ""
 Write-Host "Build complete:" -ForegroundColor Green
-Write-Host "  $DistPath\\Bill's Duplicate Finder.exe"
+Write-Host "  $DistPath\Bill's Duplicate Finder.exe"
