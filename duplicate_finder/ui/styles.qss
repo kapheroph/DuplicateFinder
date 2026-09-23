@@ -1,0 +1,179 @@
+QMainWindow, QWidget {
+    background: #101319;
+    color: #e7eaf0;
+    font-family: "Segoe UI";
+    font-size: 10.5pt;
+}
+
+QLabel#appTitle {
+    font-size: 22pt;
+    font-weight: 700;
+}
+
+QLabel#subtitle,
+QLabel#imageDetails,
+QLabel#imagePath {
+    color: #929aab;
+}
+
+QLabel#folderLabel {
+    color: #c8ceda;
+}
+
+QLabel#summaryLabel {
+    color: #b8c0cf;
+    padding: 4px 4px 10px 4px;
+}
+
+QLabel#groupTitle {
+    font-size: 15pt;
+    font-weight: 600;
+    padding: 4px;
+}
+
+QLabel#imageName {
+    font-weight: 600;
+}
+
+QLabel#emptyState {
+    color: #798294;
+    font-size: 13pt;
+    padding: 40px;
+}
+
+QFrame#controlBar,
+QFrame#imageCard {
+    background: #171c24;
+    border: 1px solid #252c38;
+    border-radius: 9px;
+}
+
+QPushButton {
+    background: #242b36;
+    border: 1px solid #343d4c;
+    border-radius: 7px;
+    padding: 8px 14px;
+    min-height: 20px;
+}
+
+QPushButton:hover {
+    background: #2c3542;
+}
+
+QPushButton:disabled {
+    color: #697180;
+    background: #1a1f27;
+    border-color: #252b34;
+}
+
+QPushButton#primaryButton {
+    background: #315b92;
+    border-color: #3a6dab;
+}
+
+QPushButton#primaryButton:hover {
+    background: #396aa6;
+}
+
+QListWidget {
+    background: #141820;
+    border: 1px solid #252c38;
+    border-radius: 8px;
+    padding: 6px;
+    outline: 0;
+}
+
+QListWidget::item {
+    padding: 10px 8px;
+    border-radius: 6px;
+}
+
+QListWidget::item:hover {
+    background: #202733;
+}
+
+QListWidget::item:selected {
+    background: #29486f;
+}
+
+QCheckBox {
+    spacing: 7px;
+}
+
+QProgressBar {
+    border: 1px solid #303846;
+    border-radius: 5px;
+    background: #171c24;
+    min-height: 9px;
+    max-height: 9px;
+}
+
+QProgressBar::chunk {
+    background: #4f82bd;
+    border-radius: 4px;
+}
+
+QStatusBar {
+    color: #929aab;
+    background: #0d1015;
+    border-top: 1px solid #202631;
+}
+
+QSplitter::handle {
+    background: #202631;
+    width: 1px;
+}
+
+
+QFrame#imageCard[decision="quarantine"] {
+    border: 2px solid #9b4a4a;
+    background: #24191c;
+}
+
+QFrame#imageCard[decision="ignore"] {
+    border: 1px solid #58606e;
+    background: #181b20;
+}
+
+QPushButton#dangerButton {
+    background: #5f3035;
+    border-color: #81434a;
+}
+
+QPushButton#dangerButton:hover {
+    background: #744049;
+}
+
+
+QFrame#adviceBox {
+    background: #151b23;
+    border: 1px solid #2b3949;
+    border-radius: 8px;
+}
+
+QLabel#adviceText {
+    color: #d6dbe5;
+    font-size: 11pt;
+}
+
+QLabel#adviceSuggestion {
+    color: #a8d7b3;
+    font-weight: 600;
+    padding-top: 3px;
+}
+
+QLabel#comparisonNotes {
+    color: #b9c1cf;
+    background: #12171e;
+    border-radius: 6px;
+    padding: 8px;
+}
+
+QLabel#suggestedBadge {
+    color: #bce8c6;
+    background: #1e3a29;
+    border: 1px solid #315c40;
+    border-radius: 6px;
+    padding: 5px 8px;
+    font-weight: 700;
+}
