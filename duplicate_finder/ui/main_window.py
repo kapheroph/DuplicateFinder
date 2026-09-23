@@ -35,6 +35,7 @@ from duplicate_finder.actions import (
 )
 from duplicate_finder.duplicates import AnalysisResult, analyze_folder
 from duplicate_finder.models import DuplicateGroup, ImageRecord
+from duplicate_finder.resources import resource_path
 
 
 class ScanWorker(QObject):
@@ -507,7 +508,7 @@ class MainWindow(QMainWindow):
         status.showMessage("Ready")
 
     def _load_styles(self) -> None:
-        stylesheet = Path(__file__).with_name("styles.qss")
+        stylesheet = resource_path("duplicate_finder/ui/styles.qss")
         if stylesheet.exists():
             self.setStyleSheet(stylesheet.read_text(encoding="utf-8"))
 
@@ -770,6 +771,11 @@ class MainWindow(QMainWindow):
 def run_gui() -> int:
     app = QApplication.instance() or QApplication([])
     app.setApplicationName("Bill's Duplicate Finder")
+
+    icon_path = resource_path("assets/bills_duplicate_finder.ico")
+    if icon_path.exists():
+        app.setWindowIcon(QIcon(str(icon_path)))
+
     window = MainWindow()
     window.show()
     return app.exec()
