@@ -143,3 +143,37 @@ QPushButton#dangerButton {
 QPushButton#dangerButton:hover {
     background: #744049;
 }
+
+
+QFrame#adviceBox {
+    background: #151b23;
+    border: 1px solid #2b3949;
+    border-radius: 8px;
+}
+
+QLabel#adviceText {
+    color: #d6dbe5;
+    font-size: 11pt;
+}
+
+QLabel#adviceSuggestion {
+    color: #a8d7b3;
+    font-weight: 600;
+    padding-top: 3px;
+}
+
+QLabel#comparisonNotes {
+    color: #b9c1cf;
+    background: #12171e;
+    border-radius: 6px;
+    padding: 8px;
+}
+
+QLabel#suggestedBadge {
+    color: #bce8c6;
+    background: #1e3a29;
+    border: 1px solid #315c40;
+    border-radius: 6px;
+    padding: 5px 8px;
+    font-weight: 700;
+}
