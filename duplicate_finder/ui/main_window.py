@@ -3,10 +3,11 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import QObject, QSize, Qt, QThread, QStandardPaths, Signal
-from PySide6.QtGui import QIcon, QPixmap
+from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
+    QDialog,
     QFileDialog,
     QFrame,
     QHBoxLayout,
@@ -25,6 +26,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from duplicate_finder.actions import move_to_quarantine, quarantine_directory
 from duplicate_finder.duplicates import AnalysisResult, analyze_folder
 from duplicate_finder.models import DuplicateGroup, ImageRecord
 
@@ -47,10 +49,53 @@ class ScanWorker(QObject):
         self.finished.emit(result)
 
 
-class ImageCard(QFrame):
+class PreviewDialog(QDialog):
     def __init__(self, record: ImageRecord, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self.setWindowTitle(record.path.name)
+        self.resize(1100, 800)
+
+        layout = QVBoxLayout(self)
+
+        preview = QLabel()
+        preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        pixmap = QPixmap(str(record.path))
+        if pixmap.isNull():
+            preview.setText("Preview unavailable")
+        else:
+            preview.setPixmap(
+                pixmap.scaled(
+                    QSize(1020, 700),
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation,
+                )
+            )
+
+        details = QLabel(
+            f"{record.path}\n"
+            f"{record.width} × {record.height}   •   {record.size_bytes / 1024:.1f} KiB"
+        )
+        details.setObjectName("imagePath")
+        details.setWordWrap(True)
+
+        layout.addWidget(preview, 1)
+        layout.addWidget(details)
+
+
+class ImageCard(QFrame):
+    decision_changed = Signal(object, str)
+    preview_requested = Signal(object)
+
+    def __init__(
+        self,
+        record: ImageRecord,
+        decision: str = "keep",
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
         self.record = record
+        self.decision = decision
         self.setObjectName("imageCard")
 
         layout = QVBoxLayout(self)
@@ -60,6 +105,8 @@ class ImageCard(QFrame):
         preview = QLabel()
         preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
         preview.setMinimumSize(220, 180)
+        preview.setCursor(Qt.CursorShape.PointingHandCursor)
+        preview.mousePressEvent = lambda _event: self.preview_requested.emit(self.record)
 
         pixmap = QPixmap(str(record.path))
         if not pixmap.isNull():
@@ -86,14 +133,54 @@ class ImageCard(QFrame):
         path.setObjectName("imagePath")
         path.setWordWrap(True)
 
+        actions = QHBoxLayout()
+        self.keep_button = QPushButton("Keep")
+        self.ignore_button = QPushButton("Ignore")
+        self.quarantine_button = QPushButton("Quarantine")
+        self.quarantine_button.setObjectName("dangerButton")
+
+        self.keep_button.clicked.connect(lambda: self.set_decision("keep", emit=True))
+        self.ignore_button.clicked.connect(lambda: self.set_decision("ignore", emit=True))
+        self.quarantine_button.clicked.connect(
+            lambda: self.set_decision("quarantine", emit=True)
+        )
+
+        actions.addWidget(self.keep_button)
+        actions.addWidget(self.ignore_button)
+        actions.addWidget(self.quarantine_button)
+
         layout.addWidget(preview)
         layout.addWidget(name)
         layout.addWidget(details)
         layout.addWidget(path)
+        layout.addLayout(actions)
+
+        self.set_decision(decision, emit=False)
+
+    def set_decision(self, decision: str, *, emit: bool) -> None:
+        self.decision = decision
+        self.setProperty("decision", decision)
+        self.style().unpolish(self)
+        self.style().polish(self)
+
+        self.keep_button.setEnabled(decision != "keep")
+        self.ignore_button.setEnabled(decision != "ignore")
+        self.quarantine_button.setEnabled(decision != "quarantine")
+
+        if emit:
+            self.decision_changed.emit(self.record, decision)
 
 
 class GroupPanel(QWidget):
-    def __init__(self, group: DuplicateGroup, parent: QWidget | None = None) -> None:
+    decision_changed = Signal(object, str)
+    preview_requested = Signal(object)
+
+    def __init__(
+        self,
+        group: DuplicateGroup,
+        decisions: dict[Path, str],
+        parent: QWidget | None = None,
+    ) -> None:
         super().__init__(parent)
 
         layout = QVBoxLayout(self)
@@ -104,13 +191,20 @@ class GroupPanel(QWidget):
         title.setObjectName("groupTitle")
         layout.addWidget(title)
 
+        hint = QLabel("Click an image to preview it larger.")
+        hint.setObjectName("imageDetails")
+        layout.addWidget(hint)
+
         cards = QWidget()
         cards_layout = QHBoxLayout(cards)
         cards_layout.setContentsMargins(0, 0, 0, 0)
         cards_layout.setSpacing(12)
 
         for record in group.files:
-            cards_layout.addWidget(ImageCard(record))
+            card = ImageCard(record, decisions.get(record.path, "keep"))
+            card.decision_changed.connect(self.decision_changed.emit)
+            card.preview_requested.connect(self.preview_requested.emit)
+            cards_layout.addWidget(card)
 
         cards_layout.addStretch(1)
         layout.addWidget(cards)
@@ -137,6 +231,8 @@ class MainWindow(QMainWindow):
         self.scan_thread: QThread | None = None
         self.scan_worker: ScanWorker | None = None
         self.group_lookup: list[DuplicateGroup] = []
+        self.decisions: dict[Path, str] = {}
+        self.record_lookup: dict[Path, ImageRecord] = {}
 
         self._build_ui()
         self._load_styles()
@@ -149,10 +245,15 @@ class MainWindow(QMainWindow):
 
         header = QHBoxLayout()
         title_block = QVBoxLayout()
+
         app_title = QLabel("Bill's Duplicate Finder")
         app_title.setObjectName("appTitle")
-        subtitle = QLabel("Find exact and visually similar images without changing anything.")
+
+        subtitle = QLabel(
+            "Find exact and visually similar images, then review them safely."
+        )
         subtitle.setObjectName("subtitle")
+
         title_block.addWidget(app_title)
         title_block.addWidget(subtitle)
 
@@ -226,6 +327,23 @@ class MainWindow(QMainWindow):
         splitter.setStretchFactor(1, 1)
         outer.addWidget(splitter, 1)
 
+        action_bar = QFrame()
+        action_bar.setObjectName("controlBar")
+        action_layout = QHBoxLayout(action_bar)
+        action_layout.setContentsMargins(14, 10, 14, 10)
+
+        self.selection_summary = QLabel("0 selected for quarantine   •   0.0 B")
+        self.selection_summary.setObjectName("summaryLabel")
+
+        self.quarantine_button = QPushButton("Move Selected to Quarantine")
+        self.quarantine_button.setObjectName("dangerButton")
+        self.quarantine_button.setEnabled(False)
+        self.quarantine_button.clicked.connect(self.apply_quarantine)
+
+        action_layout.addWidget(self.selection_summary, 1)
+        action_layout.addWidget(self.quarantine_button)
+        outer.addWidget(action_bar)
+
         self.setCentralWidget(root)
 
         status = QStatusBar()
@@ -261,6 +379,10 @@ class MainWindow(QMainWindow):
         if self.folder is None or self.scan_thread is not None:
             return
 
+        self.decisions.clear()
+        self.record_lookup.clear()
+        self._update_selection_summary()
+
         self._set_scanning(True)
         self.group_list.clear()
         self.group_lookup.clear()
@@ -285,6 +407,7 @@ class MainWindow(QMainWindow):
     def scan_finished(self, result: AnalysisResult) -> None:
         self.result = result
         self._set_scanning(False)
+        self._index_records(result)
         self._populate_groups(result)
 
         total_groups = (
@@ -292,11 +415,13 @@ class MainWindow(QMainWindow):
             + len(result.exact_pixel_groups)
             + len(result.near_duplicate_groups)
         )
+
         self.summary_label.setText(
             f"{result.images_scanned} images scanned\n"
             f"{total_groups} groups to review\n"
             f"{len(result.unreadable)} skipped"
         )
+
         self.statusBar().showMessage(
             f"Scan complete — {result.images_scanned} images, {total_groups} groups"
         )
@@ -311,6 +436,7 @@ class MainWindow(QMainWindow):
             self.scan_worker.deleteLater()
         if self.scan_thread is not None:
             self.scan_thread.deleteLater()
+
         self.scan_worker = None
         self.scan_thread = None
 
@@ -319,12 +445,24 @@ class MainWindow(QMainWindow):
         self.scan_button.setEnabled(not scanning and self.folder is not None)
         self.recursive_checkbox.setEnabled(not scanning)
         self.progress.setVisible(scanning)
+
         if scanning:
             self.progress.setRange(0, 0)
             self.statusBar().showMessage("Scanning images…")
         else:
             self.progress.setRange(0, 1)
             self.progress.setValue(1)
+
+    def _index_records(self, result: AnalysisResult) -> None:
+        for groups in (
+            result.exact_file_groups,
+            result.exact_pixel_groups,
+            result.near_duplicate_groups,
+        ):
+            for group in groups:
+                for record in group.files:
+                    self.record_lookup[record.path] = record
+                    self.decisions.setdefault(record.path, "keep")
 
     def _populate_groups(self, result: AnalysisResult) -> None:
         sections = (
@@ -356,8 +494,91 @@ class MainWindow(QMainWindow):
             return
 
         group = self.group_lookup[row]
-        panel = GroupPanel(group)
+        panel = GroupPanel(group, self.decisions)
+        panel.decision_changed.connect(self.set_decision)
+        panel.preview_requested.connect(self.show_preview)
         self._replace_review_widget(panel)
+
+    def set_decision(self, record: ImageRecord, decision: str) -> None:
+        self.decisions[record.path] = decision
+        self._update_selection_summary()
+
+    def show_preview(self, record: ImageRecord) -> None:
+        PreviewDialog(record, self).exec()
+
+    def _selected_for_quarantine(self) -> list[ImageRecord]:
+        return [
+            self.record_lookup[path]
+            for path, decision in self.decisions.items()
+            if decision == "quarantine" and path in self.record_lookup
+        ]
+
+    def _update_selection_summary(self) -> None:
+        selected = self._selected_for_quarantine()
+        total_bytes = sum(record.size_bytes for record in selected)
+
+        self.selection_summary.setText(
+            f"{len(selected)} selected for quarantine"
+            f"   •   {self._format_bytes(total_bytes)}"
+        )
+
+        self.quarantine_button.setEnabled(bool(selected) and self.folder is not None)
+
+    @staticmethod
+    def _format_bytes(size: int) -> str:
+        value = float(size)
+        for unit in ("B", "KiB", "MiB", "GiB"):
+            if value < 1024 or unit == "GiB":
+                return f"{value:.1f} {unit}"
+            value /= 1024
+        return f"{value:.1f} GiB"
+
+    def apply_quarantine(self) -> None:
+        if self.folder is None:
+            return
+
+        selected = self._selected_for_quarantine()
+        if not selected:
+            return
+
+        destination = quarantine_directory(self.folder)
+
+        answer = QMessageBox.question(
+            self,
+            "Move files to quarantine?",
+            (
+                f"Move {len(selected)} selected file(s) to:\n\n"
+                f"{destination}\n\n"
+                "The files will not be deleted."
+            ),
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+
+        try:
+            moves = move_to_quarantine(
+                [record.path for record in selected],
+                self.folder,
+            )
+        except Exception as exc:
+            QMessageBox.critical(
+                self,
+                "Quarantine failed",
+                f"{type(exc).__name__}: {exc}",
+            )
+            return
+
+        QMessageBox.information(
+            self,
+            "Files quarantined",
+            (
+                f"Moved {len(moves)} file(s) to:\n\n"
+                f"{destination}\n\n"
+                "The folder will now be rescanned."
+            ),
+        )
+
+        self.start_scan()
 
     def _reset_review_stack(self) -> None:
         self._show_empty_message("Scanning…")
@@ -374,6 +595,7 @@ class MainWindow(QMainWindow):
             old = self.review_stack.widget(0)
             self.review_stack.removeWidget(old)
             old.deleteLater()
+
         self.review_stack.addWidget(widget)
         self.review_stack.setCurrentWidget(widget)
 
