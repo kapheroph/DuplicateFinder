@@ -44,3 +44,23 @@ pytest
 ## Planned next step
 
 Add a PySide6 desktop frontend with folder selection, progress, thumbnail groups, side-by-side review, and safe quarantine actions. Permanent deletion will not be the default behavior.
+
+
+## Windows executable
+
+A PyInstaller build script is included for producing a standalone Windows app.
+
+1. Place `bills_duplicate_finder.ico` in the `assets` folder.
+2. From PowerShell, run:
+
+```powershell
+.\build_windows.ps1
+```
+
+The finished application will be written to:
+
+```text
+dist\Bill's Duplicate Finder.exe
+```
+
+The executable is built with `--windowed`, so Bill will not see a console window. Python is not required on the machine that runs the finished executable.
